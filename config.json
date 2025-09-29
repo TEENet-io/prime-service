@@ -1,0 +1,27 @@
+{
+  "server": {
+    "address": ":50055"
+  },
+  "pool": {
+    "min_pool_size": 25,
+    "max_pool_size": 50,
+    "refill_threshold": 15,
+    "prime_bit_size": 1024,
+    "paillier_bit_size": 2048,
+    "pool_dir": "./prime_pool",
+    "auto_save": true,
+    "background_gen": true,
+    "refill_interval": 5,
+    "max_concurrent": 1,
+    "startup_delay": 10
+  },
+  "logging": {
+    "level": "info",
+    "output": "file",
+    "file_path": "./logs/prime-service.log",
+    "max_size": 100,
+    "max_backups": 5,
+    "max_age": 30,
+    "compress": true
+  }
+}

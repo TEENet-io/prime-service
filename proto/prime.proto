@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package prime;
+
+option go_package = "github.com/TEENet-io/prime-service/proto";
+
+service PrimeService {
+  // Get PreParamsData for ECDSA DKG (single or batch)
+  rpc GetPreParams(GetPreParamsRequest) returns (GetPreParamsResponse);
+
+  // Health check
+  rpc HealthCheck(Empty) returns (HealthStatus);
+
+  // Get pool status
+  rpc GetPoolStatus(Empty) returns (PoolStatus);
+}
+
+message Empty {}
+
+// PreParamsData message for complete parameters
+message PreParamsData {
+  // Paillier key components
+  bytes paillier_p = 1;
+  bytes paillier_q = 2;
+  bytes paillier_n = 3;
+  bytes paillier_phi_n = 4;
+  bytes paillier_lambda_n = 5;
+
+  // Additional parameters for ECDSA
+  bytes n_tildei = 6;
+  bytes h1i = 7;
+  bytes h2i = 8;
+  bytes alpha = 9;
+  bytes beta = 10;
+  bytes p = 11;  // safe prime for NTildei
+  bytes q = 12;  // safe prime for NTildei
+
+  int64 generated_at = 13; // Unix timestamp
+}
+
+message GetPreParamsRequest {
+  uint32 count = 1;  // Number of PreParams to return (default 1 if not specified)
+}
+
+message GetPreParamsResponse {
+  repeated PreParamsData params = 1;  // Returns 1 or more PreParamsData
+  int64 generation_time_ms = 2;
+}
+
+message HealthStatus {
+  bool healthy = 1;
+  string message = 2;
+  int64 uptime_seconds = 3;
+}
+
+message PoolStatus {
+  map<string, PoolInfo> pools = 1;  // Key: "1024_true" etc.
+  int64 total_generated = 2;        // Total params generated since start
+  int64 total_served = 3;           // Total params served to clients
+  double generation_rate = 4;       // Params per second
+}
+
+message PoolInfo {
+  uint32 bits = 1;
+  bool safe_prime = 2;
+  uint32 available = 3;       // Current pool size
+  uint32 target_size = 4;     // Target pool size
+  uint32 generating = 5;      // Currently being generated
+  int64 last_refill_time = 6; // Unix timestamp
+}
