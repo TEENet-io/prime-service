@@ -165,13 +165,14 @@ func (m *Manager) Stop() {
 }
 
 // GetPreParams retrieves and consumes pre-computed parameters from the pool
-// count: number of parameters to retrieve (1 for single, >1 for batch)
+// Returns whatever is available in the pool (may be less than requested or even empty)
 func (m *Manager) GetPreParams(ctx context.Context, count uint32) ([]*PreParamsData, error) {
 	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	// Check if we need to refill the pool
+	// Check if we need to trigger background refill
 	if len(m.preParams) <= m.config.RefillThreshold {
-		log.Printf("Prime pool running low (size: %d), triggering generation", len(m.preParams))
+		log.Printf("Prime pool running low (size: %d), triggering background generation", len(m.preParams))
 		go m.refillPool()
 	}
 
@@ -182,7 +183,7 @@ func (m *Manager) GetPreParams(ctx context.Context, count uint32) ([]*PreParamsD
 
 	result := make([]*PreParamsData, 0, count)
 
-	// Get from pool what we can
+	// Return whatever we have in the pool (may be less than requested)
 	available := len(m.preParams)
 	if available > 0 {
 		take := int(count)
@@ -191,26 +192,17 @@ func (m *Manager) GetPreParams(ctx context.Context, count uint32) ([]*PreParamsD
 		}
 		result = m.preParams[:take]
 		m.preParams = m.preParams[take:]
-		log.Printf("Retrieved %d pre-computed parameters from pool (remaining: %d)", take, len(m.preParams))
+		log.Printf("Retrieved %d pre-computed parameters from pool (requested: %d, remaining: %d)", take, count, len(m.preParams))
+	} else {
+		log.Printf("Prime pool is empty, returning 0 parameters (requested: %d)", count)
 	}
 
 	m.totalServed += int64(len(result))
-	m.mu.Unlock()
 
-	// Generate remaining if needed
-	remaining := int(count) - len(result)
-	if remaining > 0 {
-		log.Printf("Prime pool insufficient, generating %d parameters synchronously (this may be slow)", remaining)
-		for i := 0; i < remaining; i++ {
-			params, err := m.generateSinglePreParams()
-			if err != nil {
-				return nil, fmt.Errorf("failed to generate params: %w", err)
-			}
-			result = append(result, params)
-		}
-		m.mu.Lock()
-		m.totalServed += int64(remaining)
-		m.mu.Unlock()
+	// Note: We do NOT generate synchronously anymore
+	// Client will get whatever is available (may be less than requested or empty)
+	if len(result) < int(count) {
+		log.Printf("Warning: Only %d parameters available (requested: %d). Background generation in progress.", len(result), count)
 	}
 
 	// Save updated pool if auto-save is enabled
@@ -334,7 +326,7 @@ func (m *Manager) refillPool() {
 	// WaitGroup to track concurrent generation
 	var genWg sync.WaitGroup
 
-	// Start concurrent parameter generation with lower priority
+	// Start concurrent parameter generation with semaphore control
 	for i := 0; i < maxConcurrent; i++ {
 		genWg.Add(1)
 		go func() {
@@ -361,6 +353,7 @@ func (m *Manager) refillPool() {
 				}
 
 				params, err := m.generateSinglePreParams()
+
 				if err != nil {
 					errorCh <- err
 					return
